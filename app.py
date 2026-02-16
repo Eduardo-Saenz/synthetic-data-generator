@@ -214,6 +214,15 @@ def load_template(template_name: str) -> None:
     columns = [normalize_column(col, idx) for idx, col in enumerate(deepcopy(selected))]
     st.session_state.columns = columns
     st.session_state.next_col_id = len(columns)
+    st.session_state.columns_ui_version += 1
+
+
+def clear_all_columns() -> None:
+    st.session_state.columns = [normalize_column({}, 0)]
+    st.session_state.next_col_id = 1
+    st.session_state.columns_ui_version += 1
+    st.session_state.quick_template = "None"
+    st.session_state.last_loaded_template = "None"
 
 
 def on_template_change() -> None:
@@ -235,6 +244,8 @@ def init_state() -> None:
         st.session_state.generation_warnings = []
     if "last_loaded_template" not in st.session_state:
         st.session_state.last_loaded_template = "None"
+    if "columns_ui_version" not in st.session_state:
+        st.session_state.columns_ui_version = 0
 
 
 def add_column() -> None:
@@ -246,11 +257,13 @@ def add_column() -> None:
 
 def render_column_editor(idx: int, col: dict) -> bool:
     col_id = col["id"]
+    ui_version = st.session_state.columns_ui_version
+    key_prefix = f"v{ui_version}_"
     with st.sidebar.expander(f"Column {idx + 1}", expanded=True):
         col["column_name"] = st.text_input(
             "column_name",
             value=col.get("column_name", ""),
-            key=f"name_{col_id}",
+            key=f"{key_prefix}name_{col_id}",
         )
         current_type = col.get("column_type", "int")
         type_idx = COLUMN_TYPES.index(current_type) if current_type in COLUMN_TYPES else 0
@@ -258,29 +271,35 @@ def render_column_editor(idx: int, col: dict) -> bool:
             "column_type",
             options=COLUMN_TYPES,
             index=type_idx,
-            key=f"type_{col_id}",
+            key=f"{key_prefix}type_{col_id}",
         )
 
         col_type = col["column_type"]
         if col_type == "int":
             col["min"] = st.number_input(
-                "min", value=int(col.get("min", 0)), step=1, key=f"int_min_{col_id}"
+                "min",
+                value=int(col.get("min", 0)),
+                step=1,
+                key=f"{key_prefix}int_min_{col_id}",
             )
             col["max"] = st.number_input(
-                "max", value=int(col.get("max", 100)), step=1, key=f"int_max_{col_id}"
+                "max",
+                value=int(col.get("max", 100)),
+                step=1,
+                key=f"{key_prefix}int_max_{col_id}",
             )
         elif col_type == "float":
             col["min"] = st.number_input(
                 "min",
                 value=float(col.get("min", 0.0)),
                 step=0.1,
-                key=f"float_min_{col_id}",
+                key=f"{key_prefix}float_min_{col_id}",
             )
             col["max"] = st.number_input(
                 "max",
                 value=float(col.get("max", 100.0)),
                 step=0.1,
-                key=f"float_max_{col_id}",
+                key=f"{key_prefix}float_max_{col_id}",
             )
             col["decimals"] = st.number_input(
                 "decimals",
@@ -288,7 +307,7 @@ def render_column_editor(idx: int, col: dict) -> bool:
                 max_value=8,
                 value=int(col.get("decimals", 2)),
                 step=1,
-                key=f"float_decimals_{col_id}",
+                key=f"{key_prefix}float_decimals_{col_id}",
             )
         elif col_type == "bool":
             col["p_true"] = st.slider(
@@ -297,29 +316,29 @@ def render_column_editor(idx: int, col: dict) -> bool:
                 max_value=1.0,
                 value=float(col.get("p_true", 0.5)),
                 step=0.01,
-                key=f"bool_p_true_{col_id}",
+                key=f"{key_prefix}bool_p_true_{col_id}",
             )
         elif col_type == "category":
             col["values_raw"] = st.text_area(
                 "values (comma separated)",
                 value=str(col.get("values_raw", "")),
-                key=f"cat_values_{col_id}",
+                key=f"{key_prefix}cat_values_{col_id}",
             )
             col["weights_raw"] = st.text_input(
                 "weights (optional, comma separated)",
                 value=str(col.get("weights_raw", "")),
-                key=f"cat_weights_{col_id}",
+                key=f"{key_prefix}cat_weights_{col_id}",
             )
         elif col_type == "date":
             col["start_date"] = st.date_input(
                 "start_date",
                 value=col.get("start_date", date(2020, 1, 1)),
-                key=f"date_start_{col_id}",
+                key=f"{key_prefix}date_start_{col_id}",
             )
             col["end_date"] = st.date_input(
                 "end_date",
                 value=col.get("end_date", date.today()),
-                key=f"date_end_{col_id}",
+                key=f"{key_prefix}date_end_{col_id}",
             )
         elif col_type == "faker":
             current_method = col.get("method", "name")
@@ -328,7 +347,7 @@ def render_column_editor(idx: int, col: dict) -> bool:
                 "method",
                 options=FAKER_METHODS,
                 index=method_idx,
-                key=f"faker_method_{col_id}",
+                key=f"{key_prefix}faker_method_{col_id}",
             )
         elif col_type == "text":
             col["words"] = st.number_input(
@@ -337,16 +356,16 @@ def render_column_editor(idx: int, col: dict) -> bool:
                 max_value=50,
                 value=int(col.get("words", 5)),
                 step=1,
-                key=f"text_words_{col_id}",
+                key=f"{key_prefix}text_words_{col_id}",
             )
 
         col["unique"] = st.checkbox(
             "unique (if applicable)",
             value=bool(col.get("unique", False)),
-            key=f"unique_{col_id}",
+            key=f"{key_prefix}unique_{col_id}",
         )
 
-        return st.button("Remove column", key=f"remove_{col_id}")
+        return st.button("Remove column", key=f"{key_prefix}remove_{col_id}")
 
 
 def main() -> None:
@@ -374,6 +393,7 @@ def main() -> None:
     st.sidebar.divider()
     st.sidebar.subheader("Columns")
     st.sidebar.button("Add Column", on_click=add_column)
+    st.sidebar.button("Clear All Columns", on_click=clear_all_columns)
 
     remove_idx = None
     for i, column in enumerate(st.session_state.columns):
