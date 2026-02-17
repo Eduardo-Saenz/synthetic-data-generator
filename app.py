@@ -1,13 +1,5 @@
 from __future__ import annotations
 
-"""Streamlit UI for the synthetic data generator demo.
-
-This module only handles presentation/state and delegates business logic to:
-- validation.py (config checks + schema normalization)
-- generators.py (actual data generation)
-- export_utils.py (download formats)
-"""
-
 from copy import deepcopy
 from datetime import date
 
