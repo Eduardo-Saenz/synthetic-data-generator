@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+"""Validation and schema-normalization helpers for the Streamlit app."""
+
 from datetime import date
 from typing import Any
 
 
 def _parse_comma_separated(text: str) -> list[str]:
+    """Split comma-separated user input while trimming empty entries."""
     return [part.strip() for part in text.split(",") if part.strip()]
 
 
 def validate_config(rows: int, columns: list[dict[str, Any]]) -> list[str]:
+    """Validate user configuration and return user-facing error messages."""
     errors: list[str] = []
 
     if rows <= 0:
@@ -38,6 +42,7 @@ def validate_config(rows: int, columns: list[dict[str, Any]]) -> list[str]:
                 errors.append(f"Columna '{col_name}': min debe ser <= max.")
 
         if col_type == "number":
+            # Numeric validation is distribution-aware.
             distribution = str(col.get("number_distribution", "uniform"))
             has_min = bool(col.get("has_min", False))
             has_max = bool(col.get("has_max", False))
@@ -109,6 +114,11 @@ def validate_config(rows: int, columns: list[dict[str, Any]]) -> list[str]:
 
 
 def transform_columns(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize column schemas before generation.
+
+    Includes backward compatibility mapping for legacy `int` and `float` types
+    to the current `number` schema.
+    """
     transformed: list[dict[str, Any]] = []
 
     for col in columns:
@@ -116,6 +126,7 @@ def transform_columns(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
         col_type = out["column_type"]
 
         if col_type == "int":
+            # Legacy int -> number(uniform,int) mapping.
             out["column_type"] = "number"
             out["number_distribution"] = "uniform"
             out["number_output_type"] = "int"
@@ -126,6 +137,7 @@ def transform_columns(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
             out["clamp_to_range"] = True
 
         if col_type == "float":
+            # Legacy float -> number(uniform,float) mapping.
             out["column_type"] = "number"
             out["number_distribution"] = "uniform"
             out["number_output_type"] = "float"
@@ -136,6 +148,7 @@ def transform_columns(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
             out["clamp_to_range"] = True
 
         if col_type == "category":
+            # Parse category raw strings into typed generator inputs.
             values = [v.strip() for v in out.get("values_raw", "").split(",") if v.strip()]
             out["values"] = values
             weights_raw = str(out.get("weights_raw", "")).strip()

@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Data generation logic for each supported column type.
+
+The design keeps one function per type so behavior is easy to test/extend.
+All functions return `(values, warning)` where warning is shown in the UI when
+uniqueness cannot be guaranteed with the provided constraints.
+"""
+
 import uuid
 from datetime import date, timedelta
 from typing import Any
@@ -13,6 +20,7 @@ from faker.exceptions import UniquenessException
 def _sample_number_distribution(
     rows: int, config: dict[str, Any], rng: np.random.Generator
 ) -> np.ndarray:
+    """Sample raw numeric values from the configured distribution."""
     distribution = config.get("number_distribution", "uniform")
 
     if distribution == "uniform":
@@ -36,6 +44,7 @@ def _sample_number_distribution(
 
 
 def _postprocess_number_values(values: np.ndarray, config: dict[str, Any]) -> np.ndarray:
+    """Apply optional clamp and cast/round strategy for numeric columns."""
     has_min = bool(config.get("has_min", False))
     has_max = bool(config.get("has_max", False))
     clamp_to_range = bool(config.get("clamp_to_range", False))
@@ -59,6 +68,11 @@ def _postprocess_number_values(values: np.ndarray, config: dict[str, Any]) -> np
 def generate_number_column(
     rows: int, config: dict[str, Any], rng: np.random.Generator, unique: bool
 ) -> tuple[list[float | int], str | None]:
+    """Generate a `number` column with optional uniqueness.
+
+    For unique mode we sample in batches and accumulate unseen values up to a
+    bounded number of attempts to keep runtime predictable.
+    """
     warning: str | None = None
 
     if not unique:
@@ -101,6 +115,7 @@ def generate_number_column(
 def generate_int_column(
     rows: int, min_value: int, max_value: int, rng: np.random.Generator, unique: bool
 ) -> tuple[list[int], str | None]:
+    """Legacy integer generator kept for backward compatibility."""
     if not unique:
         values = rng.integers(min_value, max_value + 1, size=rows)
         return values.tolist(), None
@@ -126,6 +141,7 @@ def generate_float_column(
     rng: np.random.Generator,
     unique: bool,
 ) -> tuple[list[float], str | None]:
+    """Legacy float generator kept for backward compatibility."""
     scale = 10**decimals
     min_scaled = int(round(min_value * scale))
     max_scaled = int(round(max_value * scale))
@@ -152,6 +168,7 @@ def generate_float_column(
 def generate_bool_column(
     rows: int, p_true: float, rng: np.random.Generator, unique: bool
 ) -> tuple[list[bool], str | None]:
+    """Generate booleans with Bernoulli probability `p_true`."""
     if not unique:
         values = rng.choice([True, False], size=rows, p=[p_true, 1 - p_true])
         return values.tolist(), None
@@ -173,6 +190,7 @@ def generate_category_column(
     rng: np.random.Generator,
     unique: bool,
 ) -> tuple[list[str], str | None]:
+    """Generate categorical data with optional normalized weights."""
     probs = None
     if weights:
         arr = np.array(weights, dtype=float)
@@ -197,6 +215,7 @@ def generate_category_column(
 def generate_date_column(
     rows: int, start_date: date, end_date: date, rng: np.random.Generator, unique: bool
 ) -> tuple[list[date], str | None]:
+    """Generate uniformly distributed dates in the closed [start, end] range."""
     day_span = (end_date - start_date).days
 
     if not unique:
@@ -219,6 +238,7 @@ def generate_date_column(
 def generate_uuid_column(
     rows: int, rng: np.random.Generator, unique: bool
 ) -> tuple[list[str], str | None]:
+    """Generate UUID strings based on RNG bits for reproducibility."""
     if unique:
         values = set()
         result: list[str] = []
@@ -255,6 +275,7 @@ def generate_faker_column(
     method: str,
     unique: bool,
 ) -> tuple[list[str], str | None]:
+    """Generate values from a selected Faker provider method."""
     if not unique:
         return [str(getattr(faker_obj, method)()) for _ in range(rows)], None
 
@@ -281,6 +302,7 @@ def generate_faker_column(
 def generate_text_column(
     rows: int, faker_obj: Faker, words: int, unique: bool
 ) -> tuple[list[str], str | None]:
+    """Generate text as a small word sequence from Faker."""
     def _make_text() -> str:
         return " ".join(faker_obj.words(nb=words))
 
@@ -314,6 +336,7 @@ def generate_dataset(
     locale: str,
     seed: int | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
+    """Generate a full DataFrame from the column schema list."""
     faker_obj = Faker(locale)
     rng = np.random.default_rng(seed)
 
@@ -329,6 +352,7 @@ def generate_dataset(
         unique = bool(col.get("unique", False))
         warning: str | None = None
 
+        # Legacy branches are intentionally kept to support older saved schemas.
         if col_type == "int":
             values, warning = generate_int_column(
                 rows,

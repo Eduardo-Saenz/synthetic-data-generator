@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+"""Streamlit UI for the synthetic data generator demo.
+
+This module only handles presentation/state and delegates business logic to:
+- validation.py (config checks + schema normalization)
+- generators.py (actual data generation)
+- export_utils.py (download formats)
+"""
+
 from copy import deepcopy
 from datetime import date
 
@@ -30,6 +38,11 @@ LOCALES = ["es_MX", "es_ES", "en_US"]
 
 
 def base_column() -> dict:
+    """Return the default schema for a new column in the UI.
+
+    The schema includes all possible fields used by any column type so that
+    dynamic rendering can safely read keys without additional guards.
+    """
     return {
         "id": 0,
         "column_name": "col_1",
@@ -61,6 +74,11 @@ def base_column() -> dict:
 
 
 def get_templates() -> dict[str, list[dict]]:
+    """Provide quick-start column configurations shown in the sidebar.
+
+    Template definitions are intentionally explicit to keep the demo readable
+    for students and easy to modify by other developers.
+    """
     today = date.today()
     return {
         "Web Users": [
@@ -249,6 +267,7 @@ def get_templates() -> dict[str, list[dict]]:
 
 
 def normalize_column(raw: dict, col_id: int) -> dict:
+    """Merge a partial column config with defaults and assign a stable id."""
     col = base_column()
     col.update(raw)
     col["id"] = col_id
@@ -256,6 +275,7 @@ def normalize_column(raw: dict, col_id: int) -> dict:
 
 
 def load_template(template_name: str) -> None:
+    """Load a template into session state and refresh dynamic widget keys."""
     if template_name == "None":
         return
     templates = get_templates()
@@ -263,10 +283,13 @@ def load_template(template_name: str) -> None:
     columns = [normalize_column(col, idx) for idx, col in enumerate(deepcopy(selected))]
     st.session_state.columns = columns
     st.session_state.next_col_id = len(columns)
+    # Bumping this version invalidates previous widget keys so stale values
+    # from a different template are not reused by Streamlit.
     st.session_state.columns_ui_version += 1
 
 
 def clear_all_columns() -> None:
+    """Reset the schema editor to a single default column."""
     st.session_state.columns = [normalize_column({}, 0)]
     st.session_state.next_col_id = 1
     st.session_state.columns_ui_version += 1
@@ -275,6 +298,7 @@ def clear_all_columns() -> None:
 
 
 def on_template_change() -> None:
+    """Handle sidebar template selection changes."""
     selected = st.session_state.quick_template
     prev = st.session_state.get("last_loaded_template", "None")
     if selected != prev and selected != "None":
@@ -283,6 +307,7 @@ def on_template_change() -> None:
 
 
 def init_state() -> None:
+    """Initialize all session_state keys used by the app."""
     if "columns" not in st.session_state:
         st.session_state.columns = [normalize_column({}, 0)]
     if "next_col_id" not in st.session_state:
@@ -298,6 +323,7 @@ def init_state() -> None:
 
 
 def add_column() -> None:
+    """Append a new editable column config to the sidebar."""
     col = normalize_column({}, st.session_state.next_col_id)
     col["column_name"] = f"col_{len(st.session_state.columns) + 1}"
     st.session_state.columns.append(col)
@@ -305,8 +331,11 @@ def add_column() -> None:
 
 
 def render_column_editor(idx: int, col: dict) -> bool:
+    """Render controls for one column and return True if remove was clicked."""
     col_id = col["id"]
     ui_version = st.session_state.columns_ui_version
+    # Widget keys include a version prefix to avoid sticky state issues when
+    # templates change or columns are reset.
     key_prefix = f"v{ui_version}_"
     with st.sidebar.expander(f"Column {idx + 1}", expanded=True):
         col["column_name"] = st.text_input(
@@ -325,6 +354,8 @@ def render_column_editor(idx: int, col: dict) -> bool:
 
         col_type = col["column_type"]
         if col_type == "number":
+            # Numeric columns support multiple statistical distributions and
+            # optional output casting/range clamping.
             output_type = col.get("number_output_type", "float")
             out_type_idx = (
                 NUMBER_OUTPUT_TYPES.index(output_type)
@@ -502,6 +533,7 @@ def render_column_editor(idx: int, col: dict) -> bool:
 
 
 def main() -> None:
+    """Main Streamlit entrypoint."""
     st.set_page_config(page_title="Synthetic Data Generator", layout="wide")
     init_state()
 
@@ -542,6 +574,8 @@ def main() -> None:
     generate_clicked = st.button("Generate Dataset", type="primary", use_container_width=True)
 
     if generate_clicked:
+        # Validation is separated from generation to provide clear UI feedback
+        # and avoid partial/invalid datasets.
         errors = validate_config(rows, st.session_state.columns)
         if errors:
             st.session_state.generated_df = None
@@ -549,6 +583,8 @@ def main() -> None:
                 st.error(err)
         else:
             seed = None if seed_is_random else int(seed_value)
+            # transform_columns handles compatibility mappings (legacy int/float
+            # schemas to the current number schema) before generation.
             transformed = transform_columns(st.session_state.columns)
             df, warnings = generate_dataset(
                 rows=rows,
