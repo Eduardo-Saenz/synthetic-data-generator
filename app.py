@@ -10,7 +10,9 @@ from generators import generate_dataset
 from validation import transform_columns, validate_config
 
 
-COLUMN_TYPES = ["faker", "int", "float", "bool", "category", "date", "uuid", "text"]
+COLUMN_TYPES = ["faker", "number", "bool", "category", "date", "uuid", "text"]
+NUMBER_DISTRIBUTIONS = ["uniform", "normal", "lognormal", "exponential"]
+NUMBER_OUTPUT_TYPES = ["float", "int"]
 FAKER_METHODS = [
     "name",
     "email",
@@ -31,9 +33,21 @@ def base_column() -> dict:
     return {
         "id": 0,
         "column_name": "col_1",
-        "column_type": "int",
+        "column_type": "number",
+        "number_distribution": "uniform",
+        "number_output_type": "float",
+        "uniform_low": 0.0,
+        "uniform_high": 100.0,
+        "mean": 0.0,
+        "std": 1.0,
+        "mu": 0.0,
+        "sigma": 1.0,
+        "lambda_rate": 1.0,
+        "has_min": False,
+        "has_max": False,
         "min": 0,
         "max": 100,
+        "clamp_to_range": False,
         "decimals": 2,
         "p_true": 0.5,
         "values_raw": "A,B,C",
@@ -69,9 +83,16 @@ def get_templates() -> dict[str, list[dict]]:
             },
             {
                 "column_name": "age",
-                "column_type": "int",
+                "column_type": "number",
+                "number_distribution": "uniform",
+                "number_output_type": "int",
+                "uniform_low": 18,
+                "uniform_high": 70,
+                "has_min": True,
                 "min": 18,
+                "has_max": True,
                 "max": 70,
+                "clamp_to_range": True,
                 "unique": False,
             },
             {
@@ -121,17 +142,31 @@ def get_templates() -> dict[str, list[dict]]:
             },
             {
                 "column_name": "price",
-                "column_type": "float",
+                "column_type": "number",
+                "number_distribution": "uniform",
+                "number_output_type": "float",
+                "uniform_low": 5.0,
+                "uniform_high": 2000.0,
+                "has_min": True,
                 "min": 5.0,
+                "has_max": True,
                 "max": 2000.0,
+                "clamp_to_range": True,
                 "decimals": 2,
                 "unique": False,
             },
             {
                 "column_name": "quantity",
-                "column_type": "int",
+                "column_type": "number",
+                "number_distribution": "uniform",
+                "number_output_type": "int",
+                "uniform_low": 1,
+                "uniform_high": 5,
+                "has_min": True,
                 "min": 1,
+                "has_max": True,
                 "max": 5,
+                "clamp_to_range": True,
                 "unique": False,
             },
             {
@@ -162,9 +197,16 @@ def get_templates() -> dict[str, list[dict]]:
             },
             {
                 "column_name": "age",
-                "column_type": "int",
+                "column_type": "number",
+                "number_distribution": "uniform",
+                "number_output_type": "int",
+                "uniform_low": 17,
+                "uniform_high": 30,
+                "has_min": True,
                 "min": 17,
+                "has_max": True,
                 "max": 30,
+                "clamp_to_range": True,
                 "unique": False,
             },
             {
@@ -176,9 +218,16 @@ def get_templates() -> dict[str, list[dict]]:
             },
             {
                 "column_name": "gpa",
-                "column_type": "float",
+                "column_type": "number",
+                "number_distribution": "uniform",
+                "number_output_type": "float",
+                "uniform_low": 0.0,
+                "uniform_high": 4.0,
+                "has_min": True,
                 "min": 0.0,
+                "has_max": True,
                 "max": 4.0,
+                "clamp_to_range": True,
                 "decimals": 2,
                 "unique": False,
             },
@@ -265,7 +314,7 @@ def render_column_editor(idx: int, col: dict) -> bool:
             value=col.get("column_name", ""),
             key=f"{key_prefix}name_{col_id}",
         )
-        current_type = col.get("column_type", "int")
+        current_type = col.get("column_type", "number")
         type_idx = COLUMN_TYPES.index(current_type) if current_type in COLUMN_TYPES else 0
         col["column_type"] = st.selectbox(
             "column_type",
@@ -275,40 +324,124 @@ def render_column_editor(idx: int, col: dict) -> bool:
         )
 
         col_type = col["column_type"]
-        if col_type == "int":
-            col["min"] = st.number_input(
-                "min",
-                value=int(col.get("min", 0)),
-                step=1,
-                key=f"{key_prefix}int_min_{col_id}",
+        if col_type == "number":
+            output_type = col.get("number_output_type", "float")
+            out_type_idx = (
+                NUMBER_OUTPUT_TYPES.index(output_type)
+                if output_type in NUMBER_OUTPUT_TYPES
+                else 0
             )
-            col["max"] = st.number_input(
-                "max",
-                value=int(col.get("max", 100)),
-                step=1,
-                key=f"{key_prefix}int_max_{col_id}",
+            col["number_output_type"] = st.selectbox(
+                "output_type",
+                options=NUMBER_OUTPUT_TYPES,
+                index=out_type_idx,
+                key=f"{key_prefix}num_output_{col_id}",
             )
-        elif col_type == "float":
-            col["min"] = st.number_input(
-                "min",
-                value=float(col.get("min", 0.0)),
-                step=0.1,
-                key=f"{key_prefix}float_min_{col_id}",
+
+            dist = col.get("number_distribution", "uniform")
+            dist_idx = (
+                NUMBER_DISTRIBUTIONS.index(dist)
+                if dist in NUMBER_DISTRIBUTIONS
+                else 0
             )
-            col["max"] = st.number_input(
-                "max",
-                value=float(col.get("max", 100.0)),
-                step=0.1,
-                key=f"{key_prefix}float_max_{col_id}",
+            col["number_distribution"] = st.selectbox(
+                "distribution",
+                options=NUMBER_DISTRIBUTIONS,
+                index=dist_idx,
+                key=f"{key_prefix}num_dist_{col_id}",
             )
-            col["decimals"] = st.number_input(
-                "decimals",
-                min_value=0,
-                max_value=8,
-                value=int(col.get("decimals", 2)),
-                step=1,
-                key=f"{key_prefix}float_decimals_{col_id}",
+
+            if col["number_distribution"] == "uniform":
+                col["uniform_low"] = st.number_input(
+                    "uniform_low",
+                    value=float(col.get("uniform_low", 0.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_uniform_low_{col_id}",
+                )
+                col["uniform_high"] = st.number_input(
+                    "uniform_high",
+                    value=float(col.get("uniform_high", 100.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_uniform_high_{col_id}",
+                )
+            elif col["number_distribution"] == "normal":
+                col["mean"] = st.number_input(
+                    "mean",
+                    value=float(col.get("mean", 0.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_mean_{col_id}",
+                )
+                col["std"] = st.number_input(
+                    "std",
+                    value=float(col.get("std", 1.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_std_{col_id}",
+                )
+            elif col["number_distribution"] == "lognormal":
+                col["mu"] = st.number_input(
+                    "mu",
+                    value=float(col.get("mu", 0.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_mu_{col_id}",
+                )
+                col["sigma"] = st.number_input(
+                    "sigma",
+                    value=float(col.get("sigma", 1.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_sigma_{col_id}",
+                )
+            elif col["number_distribution"] == "exponential":
+                col["lambda_rate"] = st.number_input(
+                    "lambda",
+                    value=float(col.get("lambda_rate", 1.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_lambda_{col_id}",
+                )
+
+            col["has_min"] = st.checkbox(
+                "set min bound",
+                value=bool(col.get("has_min", False)),
+                key=f"{key_prefix}num_has_min_{col_id}",
             )
+            if col["has_min"]:
+                col["min"] = st.number_input(
+                    "min",
+                    value=float(col.get("min", 0.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_min_{col_id}",
+                )
+
+            col["has_max"] = st.checkbox(
+                "set max bound",
+                value=bool(col.get("has_max", False)),
+                key=f"{key_prefix}num_has_max_{col_id}",
+            )
+            if col["has_max"]:
+                col["max"] = st.number_input(
+                    "max",
+                    value=float(col.get("max", 100.0)),
+                    step=0.1,
+                    key=f"{key_prefix}num_max_{col_id}",
+                )
+
+            if col["has_min"] or col["has_max"]:
+                col["clamp_to_range"] = st.checkbox(
+                    "clamp to range",
+                    value=bool(col.get("clamp_to_range", False)),
+                    key=f"{key_prefix}num_clamp_{col_id}",
+                )
+            else:
+                col["clamp_to_range"] = False
+
+            if col["number_output_type"] == "float":
+                col["decimals"] = st.number_input(
+                    "decimals",
+                    min_value=0,
+                    max_value=8,
+                    value=int(col.get("decimals", 2)),
+                    step=1,
+                    key=f"{key_prefix}num_decimals_{col_id}",
+                )
         elif col_type == "bool":
             col["p_true"] = st.slider(
                 "p_true",

@@ -37,6 +37,38 @@ def validate_config(rows: int, columns: list[dict[str, Any]]) -> list[str]:
             if col.get("min", 0.0) > col.get("max", 0.0):
                 errors.append(f"Columna '{col_name}': min debe ser <= max.")
 
+        if col_type == "number":
+            distribution = str(col.get("number_distribution", "uniform"))
+            has_min = bool(col.get("has_min", False))
+            has_max = bool(col.get("has_max", False))
+
+            if distribution == "uniform":
+                if float(col.get("uniform_low", 0.0)) >= float(col.get("uniform_high", 1.0)):
+                    errors.append(
+                        f"Columna '{col_name}': uniform_low debe ser < uniform_high."
+                    )
+            elif distribution == "normal":
+                if float(col.get("std", 0.0)) <= 0:
+                    errors.append(f"Columna '{col_name}': std debe ser > 0.")
+            elif distribution == "lognormal":
+                if float(col.get("sigma", 0.0)) <= 0:
+                    errors.append(f"Columna '{col_name}': sigma debe ser > 0.")
+            elif distribution == "exponential":
+                if float(col.get("lambda_rate", 0.0)) <= 0:
+                    errors.append(f"Columna '{col_name}': lambda debe ser > 0.")
+            else:
+                errors.append(
+                    f"Columna '{col_name}': distribución numérica no soportada."
+                )
+
+            if has_min and has_max and float(col.get("min", 0.0)) > float(col.get("max", 0.0)):
+                errors.append(f"Columna '{col_name}': min debe ser <= max.")
+
+            if bool(col.get("clamp_to_range", False)) and not (has_min or has_max):
+                errors.append(
+                    f"Columna '{col_name}': clamp to range requiere min o max definido."
+                )
+
         if col_type == "date":
             start = col.get("start_date")
             end = col.get("end_date")
@@ -82,6 +114,26 @@ def transform_columns(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for col in columns:
         out = dict(col)
         col_type = out["column_type"]
+
+        if col_type == "int":
+            out["column_type"] = "number"
+            out["number_distribution"] = "uniform"
+            out["number_output_type"] = "int"
+            out["uniform_low"] = float(out.get("min", 0))
+            out["uniform_high"] = float(out.get("max", 100))
+            out["has_min"] = True
+            out["has_max"] = True
+            out["clamp_to_range"] = True
+
+        if col_type == "float":
+            out["column_type"] = "number"
+            out["number_distribution"] = "uniform"
+            out["number_output_type"] = "float"
+            out["uniform_low"] = float(out.get("min", 0.0))
+            out["uniform_high"] = float(out.get("max", 100.0))
+            out["has_min"] = True
+            out["has_max"] = True
+            out["clamp_to_range"] = True
 
         if col_type == "category":
             values = [v.strip() for v in out.get("values_raw", "").split(",") if v.strip()]

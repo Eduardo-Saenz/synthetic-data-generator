@@ -10,6 +10,94 @@ from faker import Faker
 from faker.exceptions import UniquenessException
 
 
+def _sample_number_distribution(
+    rows: int, config: dict[str, Any], rng: np.random.Generator
+) -> np.ndarray:
+    distribution = config.get("number_distribution", "uniform")
+
+    if distribution == "uniform":
+        low = float(config.get("uniform_low", 0.0))
+        high = float(config.get("uniform_high", 1.0))
+        return rng.uniform(low, high, size=rows)
+    if distribution == "normal":
+        mean = float(config.get("mean", 0.0))
+        std = float(config.get("std", 1.0))
+        return rng.normal(loc=mean, scale=std, size=rows)
+    if distribution == "lognormal":
+        mu = float(config.get("mu", 0.0))
+        sigma = float(config.get("sigma", 1.0))
+        return rng.lognormal(mean=mu, sigma=sigma, size=rows)
+    if distribution == "exponential":
+        lambda_rate = float(config.get("lambda_rate", 1.0))
+        scale = 1.0 / lambda_rate
+        return rng.exponential(scale=scale, size=rows)
+
+    return rng.uniform(0.0, 1.0, size=rows)
+
+
+def _postprocess_number_values(values: np.ndarray, config: dict[str, Any]) -> np.ndarray:
+    has_min = bool(config.get("has_min", False))
+    has_max = bool(config.get("has_max", False))
+    clamp_to_range = bool(config.get("clamp_to_range", False))
+    min_value = float(config.get("min", np.min(values) if values.size else 0.0))
+    max_value = float(config.get("max", np.max(values) if values.size else 0.0))
+
+    if clamp_to_range and (has_min or has_max):
+        low = min_value if has_min else -np.inf
+        high = max_value if has_max else np.inf
+        values = np.clip(values, low, high)
+
+    output_type = config.get("number_output_type", "float")
+    if output_type == "int":
+        values = np.rint(values).astype(int)
+        return values
+
+    decimals = int(config.get("decimals", 2))
+    return np.round(values.astype(float), decimals=decimals)
+
+
+def generate_number_column(
+    rows: int, config: dict[str, Any], rng: np.random.Generator, unique: bool
+) -> tuple[list[float | int], str | None]:
+    warning: str | None = None
+
+    if not unique:
+        values = _sample_number_distribution(rows, config, rng)
+        values = _postprocess_number_values(values, config)
+        return values.tolist(), None
+
+    collected: list[float | int] = []
+    seen = set()
+    attempts = 0
+    max_attempts = max(rows * 12, 1200)
+    batch_size = min(max(rows, 100), 5000)
+
+    while len(collected) < rows and attempts < max_attempts:
+        attempts += 1
+        generated = _sample_number_distribution(batch_size, config, rng)
+        processed = _postprocess_number_values(generated, config).tolist()
+        for value in processed:
+            key = (type(value), value)
+            if key not in seen:
+                seen.add(key)
+                collected.append(value)
+                if len(collected) == rows:
+                    break
+
+    if len(collected) < rows:
+        warning = (
+            "No fue posible garantizar unicidad completa en number. "
+            "Se completó con valores repetidos."
+        )
+        remaining = rows - len(collected)
+        extra = _postprocess_number_values(
+            _sample_number_distribution(remaining, config, rng), config
+        ).tolist()
+        collected.extend(extra)
+
+    return collected, warning
+
+
 def generate_int_column(
     rows: int, min_value: int, max_value: int, rng: np.random.Generator, unique: bool
 ) -> tuple[list[int], str | None]:
@@ -249,6 +337,8 @@ def generate_dataset(
                 rng,
                 unique,
             )
+        elif col_type == "number":
+            values, warning = generate_number_column(rows, col, rng, unique)
         elif col_type == "float":
             values, warning = generate_float_column(
                 rows,
